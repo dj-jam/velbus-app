@@ -32,6 +32,9 @@ assert 'exec gosu app "$0" "$@"' in runtime
 assert "dotnet /app/Velbus.Signum.Release.dll" in runtime
 assert "nginx -c /app/ha-app/nginx.conf" in runtime
 assert 'id -u app' in runtime
+assert "/dev/stderr" not in (ROOT / "runtime" / "nginx.conf").read_text()
+assert "/dev/stdout" not in (ROOT / "runtime" / "nginx.conf").read_text()
+assert "tail -n +1 -F /tmp/velbus-nginx-error.log" in runtime
 assert "USER root" in dockerfile and "gosu" in dockerfile
 assert (ROOT / "scripts" / "smoke_runtime.sh").exists()
 print("PASS public catalog structure, source isolation and app metadata")

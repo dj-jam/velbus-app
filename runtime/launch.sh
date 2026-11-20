@@ -39,13 +39,17 @@ if [ "$(id -u)" -ne "$(id -u app)" ] || [ ! -w /data/velbus ]; then
     echo "Refusing startup: runtime must run as app with writable data" >&2
     exit 1
 fi
-manager_pid="" nginx_pid=""
+manager_pid="" nginx_pid="" error_log_pid="" access_log_pid=""
 cleanup() {
     trap - EXIT INT TERM
     [ -z "$nginx_pid" ] || kill "$nginx_pid" 2>/dev/null || true
     [ -z "$manager_pid" ] || kill "$manager_pid" 2>/dev/null || true
+    [ -z "$error_log_pid" ] || kill "$error_log_pid" 2>/dev/null || true
+    [ -z "$access_log_pid" ] || kill "$access_log_pid" 2>/dev/null || true
     [ -z "$nginx_pid" ] || wait "$nginx_pid" 2>/dev/null || true
     [ -z "$manager_pid" ] || wait "$manager_pid" 2>/dev/null || true
+    [ -z "$error_log_pid" ] || wait "$error_log_pid" 2>/dev/null || true
+    [ -z "$access_log_pid" ] || wait "$access_log_pid" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 143' INT TERM
@@ -71,6 +75,15 @@ listeners=$(ss -H -ltn | awk '$4 ~ /:4201$/ { print $4 }')
 if [ "$listeners" != "127.0.0.1:4201" ]; then
     echo "Refusing ingress: Manager listener not loopback-only: $listeners" >&2; exit 1
 fi
+# /dev/stderr and /dev/stdout cannot be reopened by a different UID on a
+# restrictive Docker pipe. Write as app to protected temporary files and forward
+# logs over the already-inherited stdout/stderr file descriptors.
+touch /tmp/velbus-nginx-error.log /tmp/velbus-nginx-access.log
+chmod 0600 /tmp/velbus-nginx-error.log /tmp/velbus-nginx-access.log
+tail -n +1 -F /tmp/velbus-nginx-error.log >&2 &
+error_log_pid=$!
+tail -n +1 -F /tmp/velbus-nginx-access.log &
+access_log_pid=$!
 nginx -t -c /app/ha-app/nginx.conf
 nginx -c /app/ha-app/nginx.conf -g 'daemon off;' &
 nginx_pid=$!
