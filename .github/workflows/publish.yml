@@ -1,0 +1,96 @@
+name: Publish beta image from approved binaries
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: velbus-app-publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+jobs:
+  binaries:
+    if: ${{ github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v0.') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: aarch64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download only approved precompiled binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_TAG: ${{ github.event.release.tag_name }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          gh release download "$VERSION_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "velbus-manager2-runtime-${VERSION_TAG}-${ARCH}.tar.gz" --dir /tmp/release-assets
+          gh release download "$VERSION_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "SHA256SUMS" --dir /tmp/release-assets
+          (cd /tmp/release-assets && sha256sum -c SHA256SUMS --ignore-missing)
+          python3 scripts/verify_payload.py "/tmp/release-assets/velbus-manager2-runtime-${VERSION_TAG}-${ARCH}.tar.gz"
+          mkdir payload
+          tar -xzf "/tmp/release-assets/velbus-manager2-runtime-${VERSION_TAG}-${ARCH}.tar.gz" -C payload \
+            --no-same-owner --no-same-permissions
+          test -s payload/Velbus.Signum.Release.dll
+          test -s payload/wwwroot/velbus-ui/index.html
+      - name: Validate exact image version
+        id: vars
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v0\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish per-architecture immutable beta image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: release/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ghcr.io/dj-jam/velbus-manager2-ha:${{ steps.vars.outputs.version }}-${{ matrix.arch }}
+          build-args: |
+            BUILD_ARCH=${{ matrix.arch }}
+            BUILD_VERSION=${{ steps.vars.outputs.version }}
+          provenance: false
+  manifest:
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish multi-architecture manifest
+        env:
+          VERSION_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          image=ghcr.io/dj-jam/velbus-manager2-ha
+          # Home Assistant uses the version without the Git tag's leading v.
+          ver="${VERSION_TAG#v}"
+          docker buildx imagetools create --tag "$image:$ver" \
+            "$image:$ver-amd64" "$image:$ver-aarch64"
+          docker buildx imagetools inspect "$image:$ver"
+          echo "Image published. First-time package visibility must be set to public in GitHub Packages before installation."

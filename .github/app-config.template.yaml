@@ -1,0 +1,35 @@
+name: "Velbus Manager 2.0 Beta"
+version: "__VERSION__"
+slug: "velbus_manager_2_beta"
+description: "Velbus Manager 2.0 voor Home Assistant OS — experimenteel"
+url: "https://github.com/dj-jam/velbus-app"
+arch:
+  - amd64
+  - aarch64
+stage: experimental
+startup: application
+boot: manual
+init: true
+timeout: 30
+ingress: true
+ingress_port: 8099
+ingress_entry: "/velbus-ui/index.html"
+panel_title: "Velbus Manager Beta"
+panel_icon: "mdi:home-automation"
+panel_admin: true
+host_network: false
+homeassistant_api: false
+hassio_api: false
+auth_api: false
+docker_api: false
+full_access: false
+usb: false
+uart: false
+ports: {}
+options:
+  serial_devices: []
+schema:
+  serial_devices:
+    - "device(subsystem=tty)"
+backup: cold
+image: "ghcr.io/dj-jam/velbus-manager2-ha"

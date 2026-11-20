@@ -1,0 +1,15 @@
+# Never commit proprietary or compiled runtime into the app catalog
+payload/
+out/
+release-payload/
+*.tar
+*.tar.gz
+*.zip
+*.dll
+*.pdb
+*.so
+*.deps.json
+*.runtimeconfig.json
+.env*
+*.secret*
+__pycache__/
