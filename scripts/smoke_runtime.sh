@@ -72,6 +72,31 @@ if [ "$ws_code" != 101 ]; then
     echo "Manager WebSocket upgrade failed: HTTP $ws_code" >&2
     exit 1
 fi
+echo "Checking internal API isolation, bearer token and WebSocket"
+docker exec "$container" sh -ceu '
+    token=$(cat /data/manager-discovery-token)
+    id=$(cat /data/manager-discovery-id)
+    printf "%s" "$token" | LC_ALL=C grep -Eq "^[0-9a-f]{64}$"
+    printf "%s" "$id" | LC_ALL=C grep -Eq "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    test "$(stat -c %a /data/manager-discovery-token)" = 600
+    test "$(stat -c %a /data/manager-discovery-id)" = 600
+    test "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8098/velbus/api/v2/gateways)" = 401
+    test "$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer invalid" http://127.0.0.1:8098/velbus/api/v2/gateways)" = 401
+    test "$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token" http://127.0.0.1:8098/velbus/api/v2/gateways)" = 200
+    test "$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token" http://127.0.0.1:8098/velbus-ui/index.html)" = 404
+    test "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8098/velbus/api/v2/ws)" = 401
+    upgrade() {
+        curl --silent --max-time 2 -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token" -H "Upgrade: websocket" -H "Connection: Upgrade" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" http://127.0.0.1:8098/velbus/api/v2/ws || true
+    }
+    status=$(upgrade)
+    [ "$status" = 101 ] || { echo "Internal WebSocket upgrade expected 101, got HTTP $status" >&2; exit 1; }
+    test -z "$(cat /data/manager-supervisor-discovery-uuid 2>/dev/null || true)"
+'
+# Verify ports are not mapped onto the HAOS host, regardless of EXPOSE metadata.
+if [ -n "$(docker port "$container" 8098/tcp 2>/dev/null)" ]; then
+    echo 'Internal API was unexpectedly published as a host port' >&2
+    exit 1
+fi
 echo "App data is writable; waiting for admin-only Ingress proxy to start"
 # No external backend listener and no unrestricted nginx access.
 nginx_ready=no
@@ -108,6 +133,9 @@ docker exec "$container" sh -ceu '
     done
     [ "$found_dotnet" = yes ] && [ "$found_nginx" = yes ]
 '
+# Keep private IDs across a full container restart; never display the token.
+first_token_sha=$(docker exec "$container" sha256sum /data/manager-discovery-token | cut -d ' ' -f 1)
+first_manager_id=$(docker exec "$container" cat /data/manager-discovery-id)
 echo "Testing graceful Supervisor SIGTERM with Docker stop"
 docker stop --time 20 "$container" >/dev/null
 stopped_code=$(docker inspect -f '{{.State.ExitCode}}' "$container")
@@ -138,8 +166,14 @@ if [ "$restarted" != yes ]; then
     echo 'App did not become ready after restart' >&2
     exit 1
 fi
-docker exec -u app "$container" sh -ceu \
-    'test "$(cat /data/velbus/.ci-persistence-test)" = verified'
+test "$first_token_sha" = "$(docker exec "$container" sha256sum /data/manager-discovery-token | cut -d ' ' -f 1)"
+test "$first_manager_id" = "$(docker exec "$container" cat /data/manager-discovery-id)"
+docker exec -u app "$container" sh -ceu '
+    test "$(cat /data/velbus/.ci-persistence-test)" = verified
+    printf "%s" "$(cat /data/manager-discovery-token)" | LC_ALL=C grep -Eq "^[0-9a-f]{64}$"
+    printf "%s" "$(cat /data/manager-discovery-id)" | LC_ALL=C grep -Eq "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    test -w /data/velbus
+'
 docker stop --time 20 "$container" >/dev/null
 final_code=$(docker inspect -f '{{.State.ExitCode}}' "$container")
 if [ "$final_code" != 0 ]; then

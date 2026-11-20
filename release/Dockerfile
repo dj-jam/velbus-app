@@ -8,18 +8,19 @@ LABEL io.hass.type="app" \
       io.hass.arch="${BUILD_ARCH}" \
       org.opencontainers.image.source="https://github.com/dj-jam/velbus-app" \
       org.opencontainers.image.title="Velbus Manager 2.0 Beta"
-RUN apt-get update && apt-get install -y --no-install-recommends nginx curl iproute2 gosu && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends nginx curl iproute2 gosu jq && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --chown=app:app payload/ /app/
 COPY runtime/nginx.conf /app/ha-app/nginx.conf
 COPY runtime/launch.sh /app/ha-app/launch.sh
+COPY runtime/discovery.sh /app/ha-app/discovery.sh
 RUN groupadd --gid 18 haos-dialout && usermod -a -G dialout,haos-dialout app && \
-    chmod 0755 /app/ha-app/launch.sh && \
+    chmod 0755 /app/ha-app/launch.sh && chmod 0644 /app/ha-app/discovery.sh && \
     mkdir -p /data /tmp/nginx-client /tmp/nginx-proxy /tmp/nginx-fastcgi /tmp/nginx-uwsgi /tmp/nginx-scgi && \
     chown -R "$APP_UID" /data /tmp/nginx-* && chown "$APP_UID" /app/ha-app
 ENV ASPNETCORE_ENVIRONMENT=Production MANAGER_USERDATA=/data SNAP_DATA=/data
 # Start the entrypoint as root only to repair Supervisor-owned /data mounts.
 # Runtime services MUST be started as unprivileged app using gosu.
 USER root
-EXPOSE 8099
+EXPOSE 8098 8099
 ENTRYPOINT ["/app/ha-app/launch.sh"]
