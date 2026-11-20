@@ -39,3 +39,13 @@ acceptance tests on your test Home Assistant OS instance.
 
 Only compiled runtime files are included in the public image. The source code
 for Velbus Manager remains private. This is a beta, not production software.
+
+### Ingress routing and persisted keys
+
+The Ingress entry is relative (`velbus-ui/index.html`), preventing duplicated
+slashes in the Home Assistant proxy path. Frontend assets, API and WebSocket
+requests stay inside the authenticated Ingress URL prefix. ASP.NET data
+protection keys are stored under `/data/.aspnet/DataProtection-Keys`, owned by
+the app user and not discarded during image updates. The files are not
+encrypted separately at rest; Supervisor's app data permissions and backup
+policy remain security boundaries.

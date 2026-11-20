@@ -13,7 +13,7 @@ init: true
 timeout: 30
 ingress: true
 ingress_port: 8099
-ingress_entry: "/velbus-ui/index.html"
+ingress_entry: "velbus-ui/index.html"
 panel_title: "Velbus Manager Beta"
 panel_icon: "mdi:home-automation"
 panel_admin: true

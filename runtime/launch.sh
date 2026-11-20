@@ -8,6 +8,7 @@ if [ -n "${CONFIG_FILE:-}" ]; then
 fi
 export ASPNETCORE_ENVIRONMENT=Production
 export MANAGER_USERDATA=/data SNAP_DATA=/data MANAGER_SERIAL_OPTIONS_FILE=/data/options.json
+export HOME=/data
 # Supervisor mounts persistent /data as root-owned, overriding Dockerfile ownership.
 # Bootstrap only this app-owned directory, then drop ALL service privileges.
 if [ "$(id -u)" -eq 0 ]; then
@@ -19,6 +20,15 @@ if [ "$(id -u)" -eq 0 ]; then
     chown app:app /data
     chown -R app:app /data/velbus
     chmod 0700 /data/velbus
+    # Make ASP.NET data-protection keys persistent across Supervisor app updates.
+    # These keys are app-private; they must never be written into the image.
+    if [ -L /data/.aspnet ] || [ -L /data/.aspnet/DataProtection-Keys ]; then
+        echo "Refusing unexpected ASP.NET key directory symlink" >&2
+        exit 1
+    fi
+    mkdir -p /data/.aspnet/DataProtection-Keys
+    chown -R app:app /data/.aspnet
+    chmod 0700 /data/.aspnet /data/.aspnet/DataProtection-Keys
     if [ -e /data/options.json ]; then
         if [ -L /data/options.json ] || [ ! -f /data/options.json ]; then
             echo "Refusing unexpected /data/options.json type" >&2

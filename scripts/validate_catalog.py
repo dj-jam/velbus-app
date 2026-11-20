@@ -20,6 +20,7 @@ if manifest.exists():
     assert d["slug"] == "velbus_manager_2_beta"
     assert d["arch"] == ["amd64", "aarch64"]
     assert d["ingress"] and d["panel_admin"]
+    assert d["ingress_entry"] == "velbus-ui/index.html", "Ingress entry must be relative to avoid doubled slashes"
     assert d["boot"] == "manual" and d["stage"] == "experimental"
     assert d["host_network"] is False and d["full_access"] is False
     assert d["usb"] is False and d["uart"] is False
@@ -37,4 +38,5 @@ assert "/dev/stdout" not in (ROOT / "runtime" / "nginx.conf").read_text()
 assert "tail -n +1 -F /tmp/velbus-nginx-error.log" in runtime
 assert "USER root" in dockerfile and "gosu" in dockerfile
 assert (ROOT / "scripts" / "smoke_runtime.sh").exists()
+assert 'ingress_entry: "velbus-ui/index.html"' in (ROOT / ".github/app-config.template.yaml").read_text()
 print("PASS public catalog structure, source isolation and app metadata")

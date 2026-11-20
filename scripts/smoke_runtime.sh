@@ -49,6 +49,7 @@ echo "Manager backend is serving API on loopback; checking unprivileged data acc
 # App must be able to write its persistent data with its unprivileged UID.
 docker exec -u app "$container" sh -ceu '
     test -w /data/velbus
+    test -w /data/.aspnet/DataProtection-Keys
     test -r /data/options.json
     echo verified > /data/velbus/.ci-persistence-test
     test "$(cat /data/velbus/.ci-persistence-test)" = verified
