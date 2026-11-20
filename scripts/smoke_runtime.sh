@@ -86,9 +86,10 @@ docker exec "$container" sh -ceu '
     test "$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token" http://127.0.0.1:8098/velbus-ui/index.html)" = 404
     test "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8098/velbus/api/v2/ws)" = 401
     upgrade() {
-        curl --silent --max-time 2 -o /dev/null -w "%{http_code}" \n          -H "Authorization: Bearer $token" \n          -H "Upgrade: websocket" \n          -H "Connection: Upgrade" \n          -H "Sec-WebSocket-Version: 13" \n          -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \n          http://127.0.0.1:8098/velbus/api/v2/ws || true
+        curl --silent --max-time 2 -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token" -H "Upgrade: websocket" -H "Connection: Upgrade" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" http://127.0.0.1:8098/velbus/api/v2/ws || true
     }
-    test "$(upgrade)" = 101
+    status=$(upgrade)
+    [ "$status" = 101 ] || { echo "Internal WebSocket upgrade expected 101, got HTTP $status" >&2; exit 1; }
     test -z "$(cat /data/manager-supervisor-discovery-uuid 2>/dev/null || true)"
 '
 # Verify ports are not mapped onto the HAOS host, regardless of EXPOSE metadata.
