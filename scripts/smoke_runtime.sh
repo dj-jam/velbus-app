@@ -108,4 +108,42 @@ docker exec "$container" sh -ceu '
     done
     [ "$found_dotnet" = yes ] && [ "$found_nginx" = yes ]
 '
-echo "PASS root-owned Supervisor /data repaired; Manager + nginx are unprivileged; loopback and Ingress access limited"
+echo "Testing graceful Supervisor SIGTERM with Docker stop"
+docker stop --time 20 "$container" >/dev/null
+stopped_code=$(docker inspect -f '{{.State.ExitCode}}' "$container")
+if [ "$stopped_code" != 0 ]; then
+    echo "SIGTERM shutdown failed: Docker exit code $stopped_code (expected 0)" >&2
+    exit 1
+fi
+if ! docker logs "$container" 2>&1 | grep -q 'Stopping Velbus Manager after Supervisor SIGTERM'; then
+    echo "SIGTERM was not handled by the app entrypoint" >&2
+    exit 1
+fi
+echo "Checking restart and persisted app data after clean stop"
+docker start "$container" >/dev/null
+restarted=no
+for attempt in $(seq 1 65); do
+    if [ "$(docker inspect -f '{{.State.Running}}' "$container")" != true ]; then
+        echo 'App exited unexpectedly after restart' >&2
+        exit 1
+    fi
+    if docker exec "$container" curl -fsS --max-time 2 \
+        http://127.0.0.1:4201/velbus-ui/index.html -o /dev/null 2>/dev/null; then
+        restarted=yes
+        break
+    fi
+    sleep 1
+done
+if [ "$restarted" != yes ]; then
+    echo 'App did not become ready after restart' >&2
+    exit 1
+fi
+docker exec -u app "$container" sh -ceu \
+    'test "$(cat /data/velbus/.ci-persistence-test)" = verified'
+docker stop --time 20 "$container" >/dev/null
+final_code=$(docker inspect -f '{{.State.ExitCode}}' "$container")
+if [ "$final_code" != 0 ]; then
+    echo "Second clean shutdown failed with exit code $final_code" >&2
+    exit 1
+fi
+echo "PASS Supervisor-style SIGTERM and restart: exit 0 twice, persistent settings retained, Manager + nginx unprivileged"

@@ -30,6 +30,11 @@ runtime = (ROOT / "runtime" / "launch.sh").read_text()
 dockerfile = (ROOT / "release" / "Dockerfile").read_text()
 assert "chown -R app:app /data/velbus" in runtime
 assert 'exec gosu app "$0" "$@"' in runtime
+assert "trap shutdown_gracefully INT TERM" in runtime
+assert "trap 'exit 143'" not in runtime
+smoke = (ROOT / "scripts" / "smoke_runtime.sh").read_text()
+assert 'docker stop --time 20 "$container"' in smoke
+assert "stopped_code" in smoke and "final_code" in smoke
 assert "dotnet /app/Velbus.Signum.Release.dll" in runtime
 assert "nginx -c /app/ha-app/nginx.conf" in runtime
 assert 'id -u app' in runtime

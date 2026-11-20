@@ -61,8 +61,16 @@ cleanup() {
     [ -z "$error_log_pid" ] || wait "$error_log_pid" 2>/dev/null || true
     [ -z "$access_log_pid" ] || wait "$access_log_pid" 2>/dev/null || true
 }
+# Supervisor sends SIGTERM for a normal stop, upgrade or restart.
+# Handle it explicitly, wait for children, and exit 0 instead of 128+SIGTERM.
+shutdown_gracefully() {
+    trap - INT TERM
+    echo "Stopping Velbus Manager after Supervisor SIGTERM"
+    cleanup
+    exit 0
+}
 trap cleanup EXIT
-trap 'exit 143' INT TERM
+trap shutdown_gracefully INT TERM
 dotnet /app/Velbus.Signum.Release.dll \
     '--Kestrel:Endpoints:HaLoopback:Url=http://127.0.0.1:4201' \
     '--DefaultGateway:CreateLocal=false' \
