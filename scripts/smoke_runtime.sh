@@ -54,6 +54,21 @@ docker exec -u app "$container" sh -ceu '
     echo verified > /data/velbus/.ci-persistence-test
     test "$(cat /data/velbus/.ci-persistence-test)" = verified
 '
+# Exercise exact API endpoints that previously returned 404 under HA Ingress.
+echo "Checking backend API endpoints without physical bus writes"
+for path in     /velbus/api/v2/gateways     '/velbus/api/v2/actors?includeProperties=true'     /velbus/api/v2/workspace/connections     /velbus/config/velbus; do
+    code=$(docker exec "$container" curl --path-as-is -sS --max-time 8       -o /dev/null -w "%{http_code}" "http://127.0.0.1:4201$path")
+    if [ "$code" != 200 ]; then
+        echo "Manager API failed: $path returned HTTP $code" >&2
+        exit 1
+    fi
+done
+# A normal WebSocket upgrade must reach the real Manager endpoint.
+ws_code=$(docker exec "$container" curl -sS --max-time 3 -o /dev/null     -w "%{http_code}" -H 'Upgrade: websocket' -H 'Connection: Upgrade'     -H 'Sec-WebSocket-Version: 13'     -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=='     'http://127.0.0.1:4201/velbus/api/v2/ws' 2>/dev/null || true)
+if [ "$ws_code" != 101 ]; then
+    echo "Manager WebSocket upgrade failed: HTTP $ws_code" >&2
+    exit 1
+fi
 echo "App data is writable; waiting for admin-only Ingress proxy to start"
 # No external backend listener and no unrestricted nginx access.
 nginx_ready=no

@@ -37,6 +37,8 @@ assert "/dev/stderr" not in (ROOT / "runtime" / "nginx.conf").read_text()
 assert "/dev/stdout" not in (ROOT / "runtime" / "nginx.conf").read_text()
 assert "tail -n +1 -F /tmp/velbus-nginx-error.log" in runtime
 assert "USER root" in dockerfile and "gosu" in dockerfile
-assert (ROOT / "scripts" / "smoke_runtime.sh").exists()
+smoke = (ROOT / "scripts" / "smoke_runtime.sh").read_text()
+assert "/velbus/api/v2/gateways" in smoke
+assert "/velbus/api/v2/ws" in smoke
 assert 'ingress_entry: "velbus-ui/index.html"' in (ROOT / ".github/app-config.template.yaml").read_text()
 print("PASS public catalog structure, source isolation and app metadata")
