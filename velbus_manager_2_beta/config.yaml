@@ -1,5 +1,5 @@
 name: "Velbus Manager 2.0 Beta"
-version: "0.1.0-beta.3"
+version: "0.1.0-beta.4"
 slug: "velbus_manager_2_beta"
 description: "Velbus Manager 2.0 voor Home Assistant OS — experimenteel"
 url: "https://github.com/dj-jam/velbus-app"
