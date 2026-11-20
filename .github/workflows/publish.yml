@@ -73,6 +73,8 @@ jobs:
   manifest:
     needs: binaries
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.assemble.outputs.version }}
     permissions:
       packages: write
     steps:
@@ -83,6 +85,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish multi-architecture manifest
+        id: assemble
         env:
           VERSION_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -93,4 +96,12 @@ jobs:
           docker buildx imagetools create --tag "$image:$ver" \
             "$image:$ver-amd64" "$image:$ver-aarch64"
           docker buildx imagetools inspect "$image:$ver"
-          echo "Image published. First-time package visibility must be set to public in GitHub Packages before installation."
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Image built. Catalog promotion separately checks anonymous public access."
+  promote:
+    needs: manifest
+    permissions:
+      contents: write
+    uses: ./.github/workflows/promote.yml
+    with:
+      version: ${{ needs.manifest.outputs.version }}
