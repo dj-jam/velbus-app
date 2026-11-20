@@ -2,14 +2,20 @@ name: Publish beta image from approved binaries
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Retry release already created, e.g. 0.1.0-beta.2'
+        type: string
+        required: true
 permissions:
   contents: read
 concurrency:
-  group: velbus-app-publish-${{ github.event.release.tag_name }}
+  group: velbus-app-publish-${{ github.event.release.tag_name || format('v{0}', inputs.version) }}
   cancel-in-progress: false
 jobs:
   binaries:
-    if: ${{ github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v0.') }}
+    if: ${{ (github.event_name == 'release' && github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v0.')) || github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       matrix:
@@ -29,7 +35,7 @@ jobs:
       - name: Download only approved precompiled binaries
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION_TAG: ${{ github.event.release.tag_name }}
+          VERSION_TAG: ${{ github.event.release.tag_name || format('v{0}', inputs.version) }}
           ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
@@ -47,7 +53,7 @@ jobs:
       - name: Validate exact image version
         id: vars
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || format('v{0}', inputs.version) }}
         run: |
           set -euo pipefail
           [[ "$TAG" =~ ^v0\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
@@ -96,7 +102,7 @@ jobs:
       - name: Publish multi-architecture manifest
         id: assemble
         env:
-          VERSION_TAG: ${{ github.event.release.tag_name }}
+          VERSION_TAG: ${{ github.event.release.tag_name || format('v{0}', inputs.version) }}
         run: |
           set -euo pipefail
           image=ghcr.io/dj-jam/velbus-manager2-ha

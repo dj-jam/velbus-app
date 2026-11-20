@@ -5,10 +5,17 @@ set -euo pipefail
 container="velbus-app-ci-smoke-$$"
 data="$(mktemp -d)"
 cleanup() {
+    result=$?
+    if [ "$result" -ne 0 ]; then
+        echo "Smoke failed with exit $result — capturing diagnostic logs" >&2
+        docker logs "$container" 2>&1 | tail -55 >&2 || true
+        docker inspect -f '{{.State.Status}} exit={{.State.ExitCode}}' "$container" >&2 || true
+    fi
     docker rm -f "$container" >/dev/null 2>&1 || true
     sudo rm -rf -- "$data"
 }
 trap cleanup EXIT
+
 chmod 0755 "$data"
 printf '{"serial_devices":[]}\n' > "$data/options.json"
 chmod 0600 "$data/options.json"
@@ -38,6 +45,7 @@ if [ "$ready" != yes ]; then
     echo 'App did not respond before startup timeout' >&2
     exit 1
 fi
+echo "Manager backend is serving API on loopback; checking unprivileged data access"
 # App must be able to write its persistent data with its unprivileged UID.
 docker exec -u app "$container" sh -ceu '
     test -w /data/velbus
@@ -45,12 +53,25 @@ docker exec -u app "$container" sh -ceu '
     echo verified > /data/velbus/.ci-persistence-test
     test "$(cat /data/velbus/.ci-persistence-test)" = verified
 '
+echo "App data is writable; waiting for admin-only Ingress proxy to start"
 # No external backend listener and no unrestricted nginx access.
+nginx_ready=no
+for attempt in $(seq 1 20); do
+    code="$(docker exec "$container" curl -s -o /dev/null -w '%{http_code}' \
+      http://127.0.0.1:8099/velbus-ui/index.html 2>/dev/null || true)"
+    if [ "$code" = 403 ]; then nginx_ready=yes; break; fi
+    sleep 1
+done
+if [ "$nginx_ready" != yes ]; then
+    echo "Ingress proxy did not deny unauthenticated loopback: $code" >&2
+    exit 1
+fi
 docker exec "$container" sh -ceu '
     test "$(ss -H -ltn | awk '\''$4 ~ /:4201$/ { print $4 }'\'')" = "127.0.0.1:4201"
     code=$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:8099/velbus-ui/index.html)
     test "$code" = 403
 '
+echo "Ingress denied unauthorized access; inspecting process identities"
 docker exec "$container" sh -ceu '
     appuid="$(id -u app)"
     found_dotnet=no
