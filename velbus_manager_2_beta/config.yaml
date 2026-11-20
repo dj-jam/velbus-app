@@ -18,6 +18,8 @@ panel_title: "Velbus Manager Beta"
 panel_icon: "mdi:home-automation"
 panel_admin: true
 host_network: false
+discovery:
+  - velbus
 homeassistant_api: false
 hassio_api: false
 auth_api: false

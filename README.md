@@ -42,3 +42,12 @@ Initial HA OS ingress, persistent storage, serial hardware passthrough, backup,
 upgrade and rollback must be verified on an isolated Home Assistant test system.
 The Manager API intentionally remains inaccessible to Home Assistant Core from
 outside the app container until separate authentication is developed.
+
+## Supervisor discovery (experimental)
+
+App builds with `discovery: [velbus]` register the Manager address and a
+persistent, per-installation API token through the Supervisor discovery API.
+The network API is **only** available on Docker-internal port 8098 and is
+protected with a bearer token, including the WebSocket handshake. Ingress
+remains admin-only; port 4201 is never published. Official Home Assistant Core
+support for the discovery message must be implemented upstream separately.

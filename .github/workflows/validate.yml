@@ -17,3 +17,61 @@ jobs:
       - run: python -m pip install pyyaml
       - name: Validate catalog and source isolation
         run: python scripts/validate_catalog.py
+
+  smoke:
+    name: App startup, auth and persistence (${{ matrix.arch }})
+    needs: validate
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: aarch64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read last approved binary version from catalog
+        id: vars
+        run: |
+          set -euo pipefail
+          ver=$(sed -n 's/^version: "\([^"]*\)"$/\1/p' velbus_manager_2_beta/config.yaml)
+          [[ "$ver" =~ ^0\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+      - name: Download existing compiled Manager assets without private source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.vars.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          gh release download "v$VER" --repo dj-jam/velbus-app --pattern "velbus-manager2-runtime-v$VER-$ARCH.tar.gz" --dir /tmp/release-assets
+          gh release download "v$VER" --repo dj-jam/velbus-app --pattern SHA256SUMS --dir /tmp/release-assets
+          (cd /tmp/release-assets && sha256sum -c SHA256SUMS --ignore-missing)
+          python3 scripts/verify_payload.py "/tmp/release-assets/velbus-manager2-runtime-v$VER-$ARCH.tar.gz"
+          mkdir payload
+          tar -xzf "/tmp/release-assets/velbus-manager2-runtime-v$VER-$ARCH.tar.gz" -C payload --no-same-owner --no-same-permissions
+      - uses: docker/setup-buildx-action@v3
+      - name: Build candidate HA App from published binaries
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: release/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: velbus-app-discovery-ci:${{ matrix.arch }}
+          build-args: |
+            BUILD_ARCH=${{ matrix.arch }}
+            BUILD_VERSION=${{ steps.vars.outputs.version }}
+          provenance: false
+      - name: Exercise strict REST/WebSocket auth, Ingress and restart
+        env:
+          IMAGE: velbus-app-discovery-ci:${{ matrix.arch }}
+        run: bash scripts/smoke_runtime.sh

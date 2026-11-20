@@ -49,3 +49,26 @@ protection keys are stored under `/data/.aspnet/DataProtection-Keys`, owned by
 the app user and not discarded during image updates. The files are not
 encrypted separately at rest; Supervisor's app data permissions and backup
 policy remain security boundaries.
+
+### Supervisor discovery and Home Assistant Core API (beta)
+
+The app announces `velbus` through Supervisor discovery after its separately
+authenticated internal Manager REST/WebSocket proxy passes readiness tests.
+This uses the container hostname on internal port **8098**, never an exposed
+Home Assistant host port. The Manager itself remains on **127.0.0.1:4201**;
+Ingress stays on **8099**. The proxy only allows `/velbus/api/v2/` with the
+private, per-installation `Authorization: Bearer` token. The token and stable
+Manager ID live under `/data`, and registration is removed on clean stop or
+replaced after restart. No `hassio_api`/`homeassistant_api` permission is needed.
+
+Discovery alone does **not** install support for `manager://` into Home
+Assistant Core. The Home Assistant Velbus integration must implement
+`async_step_hassio`, process the Manager bearer token and keep the Supervisor
+discovery UUID separate from the Manager UUID. Home Assistant 2026.11.2 does not
+include this yet. Users must confirm the discovered integration in HA; the app
+does not create an integration automatically.
+
+The internal API uses HTTP and a bearer token over the private Docker network,
+not TLS. It is suitable for an isolated test Supervisor, not external access.
+LAN mDNS advertising for standalone Managers is separate work in the private
+Manager repository; the HA App does not advertise itself over mDNS.

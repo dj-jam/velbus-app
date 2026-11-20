@@ -49,9 +49,14 @@ if [ "$(id -u)" -ne "$(id -u app)" ] || [ ! -w /data/velbus ]; then
     echo "Refusing startup: runtime must run as app with writable data" >&2
     exit 1
 fi
+# The discovery script never logs credentials and stores identity/token in /data.
+# It is independent of the UI and the Manager's bus-scan implementation.
+. /app/ha-app/discovery.sh
+setup_discovery_identity
 manager_pid="" nginx_pid="" error_log_pid="" access_log_pid=""
 cleanup() {
     trap - EXIT INT TERM
+    unregister_supervisor_discovery || true
     [ -z "$nginx_pid" ] || kill "$nginx_pid" 2>/dev/null || true
     [ -z "$manager_pid" ] || kill "$manager_pid" 2>/dev/null || true
     [ -z "$error_log_pid" ] || kill "$error_log_pid" 2>/dev/null || true
@@ -102,9 +107,12 @@ tail -n +1 -F /tmp/velbus-nginx-error.log >&2 &
 error_log_pid=$!
 tail -n +1 -F /tmp/velbus-nginx-access.log &
 access_log_pid=$!
-nginx -t -c /app/ha-app/nginx.conf
-nginx -c /app/ha-app/nginx.conf -g 'daemon off;' &
+render_discovery_nginx_config
+nginx -t -c "$nginx_config"
+nginx -c "$nginx_config" -g 'daemon off;' &
 nginx_pid=$!
+check_discovery_api_ready
+register_supervisor_discovery
 while kill -0 "$manager_pid" 2>/dev/null && kill -0 "$nginx_pid" 2>/dev/null; do sleep 2; done
 echo "Manager or nginx exited" >&2
 exit 1
