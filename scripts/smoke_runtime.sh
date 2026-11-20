@@ -58,7 +58,10 @@ docker exec -u app "$container" sh -ceu '
 echo "Checking backend API endpoints without physical bus writes"
 for path in     /velbus/api/v2/gateways     '/velbus/api/v2/actors?includeProperties=true'     /velbus/api/v2/workspace/connections     /velbus/config/velbus; do
     code=$(docker exec "$container" curl --path-as-is -sS --max-time 8       -o /dev/null -w "%{http_code}" "http://127.0.0.1:4201$path")
-    if [ "$code" != 200 ]; then
+    # A configuration query without a selected/connected bus can return 400.
+    # The endpoint must exist, however (never 404), and other endpoints must
+    # return successful JSON even when no gateways are configured.
+    if [ "$code" != 200 ] && ! { [ "$path" = /velbus/config/velbus ] && [ "$code" = 400 ]; }; then
         echo "Manager API failed: $path returned HTTP $code" >&2
         exit 1
     fi
