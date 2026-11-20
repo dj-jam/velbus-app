@@ -15,8 +15,9 @@ Use stable `/dev/serial/by-id/...` entries when available.
 ## Network and security
 
 The container entrypoint runs a narrowly scoped root bootstrap to make the
-Supervisor-owned `/data/velbus` directory writable. It then starts the Manager
-and nginx as the unprivileged `app` user. Updates retain existing `/data`.
+Supervisor-owned `/data/velbus` directory writable. It then re-executes the
+whole start script as the unprivileged `app` user, including its process health
+checks, Manager service and nginx. Updates retain existing `/data`.
 
 The Manager backend listens on `127.0.0.1:4201` only. An nginx proxy on port
 8099 accepts Supervisor Ingress requests only and does not publish a host port.

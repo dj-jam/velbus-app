@@ -28,7 +28,10 @@ if manifest.exists():
 runtime = (ROOT / "runtime" / "launch.sh").read_text()
 dockerfile = (ROOT / "release" / "Dockerfile").read_text()
 assert "chown -R app:app /data/velbus" in runtime
-assert "gosu app dotnet" in runtime and "gosu app nginx" in runtime
+assert 'exec gosu app "$0" "$@"' in runtime
+assert "dotnet /app/Velbus.Signum.Release.dll" in runtime
+assert "nginx -c /app/ha-app/nginx.conf" in runtime
+assert 'id -u app' in runtime
 assert "USER root" in dockerfile and "gosu" in dockerfile
 assert (ROOT / "scripts" / "smoke_runtime.sh").exists()
 print("PASS public catalog structure, source isolation and app metadata")
