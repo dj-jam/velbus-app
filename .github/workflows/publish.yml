@@ -58,18 +58,27 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and publish per-architecture immutable beta image
+      - name: Build candidate image locally (not yet published)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: release/Dockerfile
           platforms: ${{ matrix.platform }}
-          push: true
+          push: false
+          load: true
           tags: ghcr.io/dj-jam/velbus-manager2-ha:${{ steps.vars.outputs.version }}-${{ matrix.arch }}
           build-args: |
             BUILD_ARCH=${{ matrix.arch }}
             BUILD_VERSION=${{ steps.vars.outputs.version }}
           provenance: false
+      - name: Verify startup with root-owned HA data mount before publishing
+        env:
+          IMAGE: ghcr.io/dj-jam/velbus-manager2-ha:${{ steps.vars.outputs.version }}-${{ matrix.arch }}
+        run: bash scripts/smoke_runtime.sh
+      - name: Publish validated platform image
+        env:
+          IMAGE: ghcr.io/dj-jam/velbus-manager2-ha:${{ steps.vars.outputs.version }}-${{ matrix.arch }}
+        run: docker push "$IMAGE"
   manifest:
     needs: binaries
     runs-on: ubuntu-latest

@@ -25,4 +25,10 @@ if manifest.exists():
     assert d["usb"] is False and d["uart"] is False
     assert d["ports"] == {}
     assert d["schema"]["serial_devices"] == ["device(subsystem=tty)"]
+runtime = (ROOT / "runtime" / "launch.sh").read_text()
+dockerfile = (ROOT / "release" / "Dockerfile").read_text()
+assert "chown -R app:app /data/velbus" in runtime
+assert "gosu app dotnet" in runtime and "gosu app nginx" in runtime
+assert "USER root" in dockerfile and "gosu" in dockerfile
+assert (ROOT / "scripts" / "smoke_runtime.sh").exists()
 print("PASS public catalog structure, source isolation and app metadata")

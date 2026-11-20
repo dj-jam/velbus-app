@@ -8,7 +8,28 @@ if [ -n "${CONFIG_FILE:-}" ]; then
 fi
 export ASPNETCORE_ENVIRONMENT=Production
 export MANAGER_USERDATA=/data SNAP_DATA=/data MANAGER_SERIAL_OPTIONS_FILE=/data/options.json
-mkdir -p /data
+# Supervisor mounts persistent /data as root-owned, overriding Dockerfile ownership.
+# Bootstrap only this app-owned directory, then drop ALL service privileges.
+if [ "$(id -u)" -ne 0 ] || [ -L /data ] || [ -L /data/velbus ]; then
+    echo "Refusing startup: unsafe data mount or missing bootstrap privileges" >&2
+    exit 1
+fi
+mkdir -p /data/velbus
+chown app:app /data
+chown -R app:app /data/velbus
+chmod 0700 /data/velbus
+if [ -e /data/options.json ]; then
+    if [ -L /data/options.json ] || [ ! -f /data/options.json ]; then
+        echo "Refusing unexpected /data/options.json type" >&2
+        exit 1
+    fi
+    chown app:app /data/options.json
+    chmod 0640 /data/options.json
+fi
+if ! command -v gosu >/dev/null 2>&1; then
+    echo "Missing privilege-drop helper" >&2
+    exit 1
+fi
 manager_pid="" nginx_pid=""
 cleanup() {
     trap - EXIT INT TERM
@@ -19,7 +40,7 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 143' INT TERM
-dotnet /app/Velbus.Signum.Release.dll \
+gosu app dotnet /app/Velbus.Signum.Release.dll \
     '--Kestrel:Endpoints:HaLoopback:Url=http://127.0.0.1:4201' \
     '--DefaultGateway:CreateLocal=false' \
     '--Authentication:Enabled=false' &
@@ -29,7 +50,7 @@ while [ "$i" -lt 60 ]; do
     if ! kill -0 "$manager_pid" 2>/dev/null; then
         echo "Manager exited during startup" >&2; exit 1
     fi
-    if curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:4201/velbus-ui/index.html; then
+    if curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:4201/velbus-ui/index.html 2>/dev/null; then
         ready=1; break
     fi
     i=$((i + 1)); sleep 1
@@ -42,7 +63,7 @@ if [ "$listeners" != "127.0.0.1:4201" ]; then
     echo "Refusing ingress: Manager listener not loopback-only: $listeners" >&2; exit 1
 fi
 nginx -t -c /app/ha-app/nginx.conf
-nginx -c /app/ha-app/nginx.conf -g 'daemon off;' &
+gosu app nginx -c /app/ha-app/nginx.conf -g 'daemon off;' &
 nginx_pid=$!
 while kill -0 "$manager_pid" 2>/dev/null && kill -0 "$nginx_pid" 2>/dev/null; do sleep 2; done
 echo "Manager or nginx exited" >&2
